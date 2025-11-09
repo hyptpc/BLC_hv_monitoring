@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import caen_libs.caenhvwrapper as hv
 import sys
 import time
@@ -16,6 +15,10 @@ PARAM_I_SET = 'I0Set' # Target/Set Current
 # --- CAEN Status Bit Flags ---
 STATUS_ON      = 1  # (1 << 0) Power ON
 STATUS_OVC     = 8  # (1 << 3) Over Current (Current Trip)
+
+# --- Failure Configuration ---
+# (Script will exit after this many consecutive connection failures)
+MAX_CONSECUTIVE_FAILURES = 3 
 
 #______________________________________________________________________________
 def create_database_table(conn):
@@ -158,20 +161,16 @@ def log_hv_status(device, conn, targets):
 def main():
     """
     Main function to load config, connect to devices, and start the logging loop.
-    This version connects and disconnects inside the loop.
+    Exits after MAX_CONSECUTIVE_FAILURES connection errors.
     """
     
-    # Parse command-line arguments to find the config file
     parser = argparse.ArgumentParser(description="CAEN HV Logger")
-    
-    # Use a positional argument for the config file path
     parser.add_argument(
         "config_file", 
         help="Path to the configuration YAML file (e.g., config.yml)"
     )
     args = parser.parse_args()
 
-    # Load the YAML configuration file
     try:
         with open(args.config_file, 'r') as f:
             config = yaml.safe_load(f)
@@ -182,7 +181,6 @@ def main():
         print(f"[Fatal Error] Error parsing YAML file {args.config_file}: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Assign configuration values to variables
     try:
         caen_cfg = config['caen_connection']
         db_cfg = config['database']
@@ -199,13 +197,13 @@ def main():
         print(f"[Fatal Error] Config file {args.config_file} is missing key: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Exit if no targets are specified
     if not monitoring_targets:
         print(f"[Fatal Error] 'monitoring_targets' in {args.config_file} is empty. Nothing to do.", file=sys.stderr)
         sys.exit(1)
     
-    # Connect to the database (remains connected)
     db_conn = None
+    consecutive_failures = 0 # Initialize consecutive failure counter
+
     try:
         print(f"Connecting to database: {DB_FILE}")
         db_conn = sqlite3.connect(DB_FILE)
@@ -213,8 +211,8 @@ def main():
         
         print(f"Connection successful. Starting logger (Interval: {LOGGING_INTERVAL_SEC}s)...")
         print(f"Monitoring targets: {monitoring_targets}")
+        print(f"Will exit after {MAX_CONSECUTIVE_FAILURES} consecutive connection failures.")
         
-        # Start the main logging loop
         while True:
             hv_device = None
             try:
@@ -223,17 +221,29 @@ def main():
                 hv_device = hv.Device.open(hv.SystemType[systype], hv.LinkType[linktype],
                                           host, 'admin', 'admin')
                 
+                # --- Connection Succeeded ---
+                consecutive_failures = 0 # Reset failure counter
+                
                 # 2. Pass targets to the logging function
                 log_hv_status(hv_device, db_conn, monitoring_targets) 
             
             except hv.Error as e:
-                # Catch connection errors (e.g., "Device Busy")
+                # --- Connection Failed ---
+                consecutive_failures += 1
                 print(f"[CAEN HV Error] Failed to connect or log: {e}", file=sys.stderr)
+                print(f"Consecutive failures: {consecutive_failures}/{MAX_CONSECUTIVE_FAILURES}", file=sys.stderr)
+                
+                # Check if failure limit is reached
+                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                    print(f"Reached maximum retry limit ({MAX_CONSECUTIVE_FAILURES}). Exiting script.", file=sys.stderr)
+                    break # Exit the while loop, which will end the script
+
             except KeyboardInterrupt:
                 print("\nStopping logger.")
                 break # Exit the while loop
             except Exception as e:
                 print(f"\n[Fatal Error] {e}", file=sys.stderr)
+                break # Exit on other fatal errors
             finally:
                 # 3. Disconnect from CAEN HV (INSIDE the loop)
                 if hv_device:
