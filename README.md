@@ -53,12 +53,7 @@ monitoring_targets:
 Run the script from your terminal. It will connect to the HV crate and the database, then begin logging at the specified interval.
 
 ```bash
-python3 database_logger.py
-```
-
-To use a config file from a different location:
-```bash
-python3 database_logger.py -c /path/to/your/config.yml
+python3 monitor_caen.py /path/to/your/config.yml
 ```
 Press `Ctrl+C` to stop the logger.
 
