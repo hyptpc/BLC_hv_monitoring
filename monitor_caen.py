@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import caen_libs.caenhvwrapper as hv
 import sys
 import time
