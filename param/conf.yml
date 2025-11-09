@@ -1,0 +1,20 @@
+# config.yml
+
+caen_connection:
+  host: '192.168.20.51'
+  systype: 'SY1527'
+  linktype: 'TCPIP'
+
+database:
+  db_file: '/home/sks/share/monitor-tmp/BLC_hv.db'
+  logging_interval_sec: 5
+  
+monitoring_targets:
+  4:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 6
+    - 7
