@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import caen_libs.caenhvwrapper as hv
 import sys
 import time
@@ -63,10 +64,13 @@ def log_hv_status(device, conn, targets):
             
             # Ensure the slot_id from config is valid
             try:
-                slot_id = int(slot_id)
+                slot_id = int(slot_id) # Ensure key is integer for list indexing
                 board = slots_map[slot_id]
             except (ValueError, IndexError):
-                print(f"  Skipping Slot {slot_id}: Invalid slot ID.")
+                print(f"  Skipping Slot {slot_id}: Invalid slot ID or slot out of range.")
+                continue
+            except TypeError:
+                print(f"  Skipping Slot {slot_id}: 'monitoring_targets' keys must be integers.")
                 continue
 
             if not board:
@@ -87,7 +91,7 @@ def log_hv_status(device, conn, targets):
             # Log only the specified channels for this slot
             for ch in channels_to_log:
                 if ch >= board.n_channel:
-                    print(f"  Skipping Slot {slot_id} Ch {ch}: Channel number too high for this board.")
+                    print(f"  Skipping Slot {slot_id} Ch {ch}: Channel number too high for this board (Max: {board.n_channel - 1}).")
                     continue
 
                 # Convert datetime to ISO 8601 string to avoid Python 3.12 DeprecationWarning
@@ -158,22 +162,23 @@ def main():
     
     # Parse command-line arguments to find the config file
     parser = argparse.ArgumentParser(description="CAEN HV Logger")
+    
+    # Change from a flagged argument (-c) to a positional argument
     parser.add_argument(
-        "-c", "--config", 
-        default="config.yml", 
-        help="Path to the configuration YAML file (default: config.yml)"
+        "config_file", 
+        help="Path to the configuration YAML file (e.g., config.yml)"
     )
     args = parser.parse_args()
 
-    # Load the YAML configuration file
+    # Load the YAML configuration file using the positional argument
     try:
-        with open(args.config, 'r') as f:
+        with open(args.config_file, 'r') as f:
             config = yaml.safe_load(f)
     except FileNotFoundError:
-        print(f"[Fatal Error] Config file not found: {args.config}", file=sys.stderr)
+        print(f"[Fatal Error] Config file not found: {args.config_file}", file=sys.stderr)
         sys.exit(1)
     except yaml.YAMLError as e:
-        print(f"[Fatal Error] Error parsing YAML file {args.config}: {e}", file=sys.stderr)
+        print(f"[Fatal Error] Error parsing YAML file {args.config_file}: {e}", file=sys.stderr)
         sys.exit(1)
 
     # Assign configuration values to variables
@@ -190,24 +195,24 @@ def main():
         linktype = caen_cfg['linktype']
 
     except KeyError as e:
-        print(f"[Fatal Error] Config file {args.config} is missing key: {e}", file=sys.stderr)
+        print(f"[Fatal Error] Config file {args.config_file} is missing key: {e}", file=sys.stderr)
         sys.exit(1)
 
     # Exit if no targets are specified
     if not monitoring_targets:
-        print(f"[Fatal Error] 'monitoring_targets' in {args.config} is empty. Nothing to do.", file=sys.stderr)
+        print(f"[Fatal Error] 'monitoring_targets' in {args.config_file} is empty. Nothing to do.", file=sys.stderr)
         sys.exit(1)
 
     db_conn = None
     hv_device = None
     
     try:
-        # 1. Connect to the SQLite Database
+        # 1. Connect to Database
         print(f"Connecting to database: {DB_FILE}")
         db_conn = sqlite3.connect(DB_FILE)
         create_database_table(db_conn)
         
-        # 2. Connect to the CAEN HV Crate
+        # 2. Connect to CAEN HV
         print(f"Connecting to CAEN HV: {host}...")
         hv_device = hv.Device.open(hv.SystemType[systype], hv.LinkType[linktype],
                                   host, 'admin', 'admin')
@@ -215,9 +220,9 @@ def main():
         print(f"Connection successful. Starting logger (Interval: {LOGGING_INTERVAL_SEC}s)...")
         print(f"Monitoring targets: {monitoring_targets}")
         
-        # 3. Start the infinite logging loop
+        # 3. Start logging loop
         while True:
-            # Pass the specific targets to the logging function
+            # Pass targets to the logging function
             log_hv_status(hv_device, db_conn, monitoring_targets) 
             time.sleep(LOGGING_INTERVAL_SEC)
             
@@ -226,7 +231,7 @@ def main():
     except Exception as e:
         print(f"\n[Fatal Error] {e}", file=sys.stderr)
     finally:
-        # 4. Ensure connections are closed on exit
+        # 4. Clean up connections
         if hv_device:
             print("Closing CAEN HV connection.")
             hv_device.close()
