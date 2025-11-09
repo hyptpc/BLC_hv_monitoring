@@ -158,19 +158,20 @@ def log_hv_status(device, conn, targets):
 def main():
     """
     Main function to load config, connect to devices, and start the logging loop.
+    This version connects and disconnects inside the loop.
     """
     
     # Parse command-line arguments to find the config file
     parser = argparse.ArgumentParser(description="CAEN HV Logger")
     
-    # Change from a flagged argument (-c) to a positional argument
+    # Use a positional argument for the config file path
     parser.add_argument(
         "config_file", 
         help="Path to the configuration YAML file (e.g., config.yml)"
     )
     args = parser.parse_args()
 
-    # Load the YAML configuration file using the positional argument
+    # Load the YAML configuration file
     try:
         with open(args.config_file, 'r') as f:
             config = yaml.safe_load(f)
@@ -202,39 +203,55 @@ def main():
     if not monitoring_targets:
         print(f"[Fatal Error] 'monitoring_targets' in {args.config_file} is empty. Nothing to do.", file=sys.stderr)
         sys.exit(1)
-
-    db_conn = None
-    hv_device = None
     
+    # Connect to the database (remains connected)
+    db_conn = None
     try:
-        # 1. Connect to Database
         print(f"Connecting to database: {DB_FILE}")
         db_conn = sqlite3.connect(DB_FILE)
         create_database_table(db_conn)
         
-        # 2. Connect to CAEN HV
-        print(f"Connecting to CAEN HV: {host}...")
-        hv_device = hv.Device.open(hv.SystemType[systype], hv.LinkType[linktype],
-                                  host, 'admin', 'admin')
-        
         print(f"Connection successful. Starting logger (Interval: {LOGGING_INTERVAL_SEC}s)...")
         print(f"Monitoring targets: {monitoring_targets}")
         
-        # 3. Start logging loop
+        # Start the main logging loop
         while True:
-            # Pass targets to the logging function
-            log_hv_status(hv_device, db_conn, monitoring_targets) 
-            time.sleep(LOGGING_INTERVAL_SEC)
+            hv_device = None
+            try:
+                # 1. Connect to CAEN HV (INSIDE the loop)
+                print(f"Connecting to CAEN HV at {host}...")
+                hv_device = hv.Device.open(hv.SystemType[systype], hv.LinkType[linktype],
+                                          host, 'admin', 'admin')
+                
+                # 2. Pass targets to the logging function
+                log_hv_status(hv_device, db_conn, monitoring_targets) 
             
-    except KeyboardInterrupt:
-        print("\nStopping logger.")
+            except hv.Error as e:
+                # Catch connection errors (e.g., "Device Busy")
+                print(f"[CAEN HV Error] Failed to connect or log: {e}", file=sys.stderr)
+            except KeyboardInterrupt:
+                print("\nStopping logger.")
+                break # Exit the while loop
+            except Exception as e:
+                print(f"\n[Fatal Error] {e}", file=sys.stderr)
+            finally:
+                # 3. Disconnect from CAEN HV (INSIDE the loop)
+                if hv_device:
+                    hv_device.close()
+                    print("CAEN HV connection closed.")
+            
+            # 4. Wait for the next interval
+            print(f"Sleeping for {LOGGING_INTERVAL_SEC} seconds...")
+            try:
+                time.sleep(LOGGING_INTERVAL_SEC)
+            except KeyboardInterrupt:
+                print("\nStopping logger.")
+                break # Exit the while loop
+
     except Exception as e:
-        print(f"\n[Fatal Error] {e}", file=sys.stderr)
+        print(f"\n[Fatal Error during setup] {e}", file=sys.stderr)
     finally:
-        # 4. Clean up connections
-        if hv_device:
-            print("Closing CAEN HV connection.")
-            hv_device.close()
+        # Clean up database connection on exit
         if db_conn:
             print("Closing database connection.")
             db_conn.close()
