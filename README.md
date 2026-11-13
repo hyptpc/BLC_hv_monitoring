@@ -72,3 +72,16 @@ The data is stored in the `measurements` table with the following structure:
 * `status_raw` (INTEGER): The raw status bitmask from the device
 * `is_overcurrent_protection_active` (BOOLEAN): 1 if OVC bit (8) is set
 * `is_current_out_of_spec` (BOOLEAN): 1 if IMon > I0Set
+
+## Service control
+
+Use the scripts in [daemon/](daemon/README.md) to manage the registered systemd
+service. sudo asks for your password in the terminal.
+
+```bash
+./daemon/status_monitor.sh
+./daemon/stop_monitor.sh       # Stop now; boot startup is unchanged.
+./daemon/disable_monitor.sh    # Stop now and disable boot startup.
+```
+
+Start/restart helpers are also provided; they launch real monitoring.
