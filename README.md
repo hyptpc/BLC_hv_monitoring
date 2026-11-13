@@ -75,13 +75,11 @@ The data is stored in the `measurements` table with the following structure:
 
 ## Service control
 
-Use the scripts in [daemon/](daemon/README.md) to manage the registered systemd
-service. sudo asks for your password in the terminal.
+Use [daemon/](daemon/README.md): `start.sh` starts the registered service and enables
+automatic startup; `stop.sh` stops it and disables automatic startup; `monitor.sh`
+shows its state. sudo asks for your password in the terminal.
 
 ```bash
-./daemon/status_monitor.sh
-./daemon/stop_monitor.sh       # Stop now; boot startup is unchanged.
-./daemon/disable_monitor.sh    # Stop now and disable boot startup.
+./daemon/monitor.sh
+./daemon/stop.sh
 ```
-
-Start/restart helpers are also provided; they launch real monitoring.
