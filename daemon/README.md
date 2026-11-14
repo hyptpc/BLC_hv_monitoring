@@ -16,7 +16,17 @@ monitoring.** From an individual tool directory, no target is needed:
 
 From `/home/sks/monitor_tools`, specify `lh2`, `blc`, `ftof`, or
 `trip`, for example `./daemon/stop.sh lh2`. FTOF corresponds to the
-`CVC_hv_monitoring` directory. Services manage Python directly, without tmux.
+`CVC_hv_monitoring` directory. The supplied BLC and FTOF definitions use the
+`blc` and `ftof` tmux sessions so people can watch the monitor directly:
+
+```bash
+tmux attach -t ftof
+```
+
+Detach without stopping it with **Ctrl+b**, then **d**. `active (exited)` is
+normal for this tmux service; it describes the launcher, not Python health.
+The other supplied definitions manage Python directly. Existing installed
+definitions remain unchanged until you explicitly install their updates.
 
 ## One-time service-definition update
 
@@ -31,7 +41,24 @@ Use `all` with `configure.py` to install all four definitions, after stopping
 all four services. The installer refuses active services, validates templates,
 backs up previous definitions under `/var/backups/monitor-services/`, and reloads
 systemd. **It does not start or enable anything.** Start only when ready using
-`./daemon/start.sh TARGET`. Old tmux/oneshot definitions are rejected by start.
+`./daemon/start.sh TARGET`. BLC/FTOF require their updated tmux definitions;
+LH2/Trip require their supplied direct-Python definitions.
+
+To change a running FTOF monitor from direct Python to tmux, run these in
+`/home/sks/monitor_tools/CVC_hv_monitoring`:
+
+```bash
+./daemon/stop.sh
+sudo /usr/bin/python3 daemon/configure.py ftof
+./daemon/start.sh
+tmux attach -t ftof
+```
+
+For BLC, use the BLC directory and `configure.py blc`. Updating a unit requires
+a brief monitor stop; perform it only when monitoring may be interrupted.
+Stopping either service removes only its own session, even when the tmux
+server is shared. Do not start `./start.sh` separately while a direct-Python
+service is running; stop/install/start as above.
 
 Definition validation without installation or service operations:
 
@@ -42,12 +69,16 @@ python daemon/configure.py --check all
 ## Restart policy
 
 - LH2 never restarts automatically after completion, cancellation, or failure.
-- BLC, FTOF, and Trip restart after 30 seconds if they exit. These legacy programs
+- The supplied Trip definition restarts after 30 seconds if Python exits. These legacy programs
   can return status 0 on errors, so any unexpected process exit is retried.
 - At most **5 starts per hour, including the initial start**. Once the limit is
   reached, systemd leaves the service failed instead of retrying indefinitely.
 - After fixing the cause, an explicit `start.sh` resets the retry limit.
   A manual `stop.sh` never triggers automatic restart.
+- BLC/FTOF's tmux launcher retries Python after 30 seconds, up to 5 starts within
+  one hour. At the limit it leaves the error and a shell visible in the pane.
+  Fix the cause, then use `daemon/stop.sh` and `daemon/start.sh` to resume.
+  The service itself does not restart the shared tmux server.
 
 LH2 code stays in `/home/sks/share/monitor-tools/lh2_leak_monitor`. BLC,
 FTOF, Trip, and common controls use `/home/sks/monitor_tools`. Input files and

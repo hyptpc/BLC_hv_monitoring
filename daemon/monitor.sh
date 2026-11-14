@@ -48,14 +48,35 @@ privileged() {
 
 if [[ "$action" == start ]]; then
     unit_type="$(systemctl show "$unit" --property=Type --value)"
-    if [[ "$unit_type" != exec ]]; then
+    definition_ok=false
+    launcher=''
+    case "$unit" in
+        blc_monitor.service) launcher='/home/sks/monitor_tools/BLC_hv_monitoring/start.sh' ;;
+        ftof_monitor.service) launcher='/home/sks/monitor_tools/CVC_hv_monitoring/start.sh' ;;
+    esac
+    if [[ -n "$launcher" ]]; then
+        if [[ "$unit_type" == oneshot ]]; then
+            unit_start="$(systemctl show "$unit" --property=ExecStart --value)"
+            unit_stop="$(systemctl show "$unit" --property=ExecStop --value)"
+            if [[ "$unit_start" == *"$launcher"* && "$unit_stop" == *"$launcher --stop"* ]]; then
+                definition_ok=true
+            fi
+        fi
+    elif [[ "$unit_type" == exec ]]; then
+        definition_ok=true
+    fi
+    if [[ "$definition_ok" != true ]]; then
         printf '%s\n' 'Update the old systemd definition before starting.' >&2
         printf 'Stop it with daemon/stop.sh, then run: sudo /usr/bin/python3 "%s/configure.py" %s\n' \
             "$SCRIPT_DIR" "$target" >&2
         exit 2
     fi
-    # Only an explicit operator start resets the bounded automatic-retry budget.
-    privileged reset-failed "$unit"
+    # An inactive, disabled unit may be unloaded between systemctl calls.
+    # reset-failed is needed only for a failed unit, which systemd retains.
+    unit_state="$(systemctl show "$unit" --property=ActiveState --value)"
+    if [[ "$unit_state" == failed ]]; then
+        privileged reset-failed "$unit"
+    fi
     privileged enable --now "$unit"
 else
     privileged disable --now "$unit"

@@ -74,20 +74,29 @@ class UnitTests(unittest.TestCase):
             return configure.install(targets, destination=self.destination,
                                      backup_root=self.backups, tools=self.tools)
 
-    def test_all_units_track_python_and_wait_for_shared_mount(self):
+    def test_units_use_their_expected_launcher_and_wait_for_shared_mount(self):
         for name in configure.UNITS.values():
             text = (HERE / 'units' / name).read_text()
             unit = configparser.ConfigParser(interpolation=None, strict=False)
             unit.read_string(text)
             with self.subTest(unit=name):
+                self.assertIn('/misc/share', unit['Unit']['RequiresMountsFor'])
+                self.assertEqual(unit['Service']['KillSignal'], 'SIGINT')
+                if name in {'blc_monitor.service', 'ftof_monitor.service'}:
+                    directory = 'BLC_hv_monitoring' if name == 'blc_monitor.service' else 'CVC_hv_monitoring'
+                    self.assertEqual(unit['Service']['Type'], 'oneshot')
+                    self.assertEqual(unit['Service']['RemainAfterExit'], 'yes')
+                    self.assertEqual(unit['Service']['KillMode'], 'process')
+                    self.assertIn('/' + directory + '/start.sh', unit['Service']['ExecStart'])
+                    self.assertTrue(unit['Service']['ExecStop'].endswith('start.sh --stop'))
+                    self.assertEqual(unit['Service']['Restart'], 'no')
+                    continue
                 self.assertEqual(unit['Service']['Type'], 'exec')
                 self.assertTrue(unit['Service']['ExecStart'].startswith('/home/sks/.venv/bin/python -u '))
-                self.assertIn('/misc/share', unit['Unit']['RequiresMountsFor'])
                 self.assertNotIn('tmux', text)
                 self.assertNotIn('RemainAfterExit', text)
                 self.assertNotIn('ExecStop=', text)
                 self.assertEqual(unit['Service']['KillMode'], 'control-group')
-                self.assertEqual(unit['Service']['KillSignal'], 'SIGINT')
 
     def test_lh2_never_restarts_and_operator_tmp_triggers_are_visible(self):
         text = (HERE / 'units/lh2_monitor.service').read_text()
@@ -98,7 +107,7 @@ class UnitTests(unittest.TestCase):
         self.assertNotIn('StartLimitBurst=', text)
 
     def test_continuous_monitors_have_finite_restart_budget(self):
-        for target in ('blc', 'ftof', 'trip'):
+        for target in ('trip',):
             text = (HERE / 'units' / configure.UNITS[target]).read_text()
             with self.subTest(target=target):
                 self.assertIn('Restart=always\n', text)
@@ -113,7 +122,10 @@ class UnitTests(unittest.TestCase):
         for target, directory in expected.items():
             text = (HERE / 'units' / configure.UNITS[target]).read_text()
             self.assertIn('WorkingDirectory=' + directory, text)
-            self.assertIn(' param/conf.yml\n', text)
+            if target in {'blc', 'ftof'}:
+                self.assertIn(directory + '/start.sh\n', text)
+            else:
+                self.assertIn(' param/conf.yml\n', text)
 
     def test_requires_operator_root_authentication(self):
         with patch.object(configure.os, 'geteuid', return_value=1000):

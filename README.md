@@ -109,6 +109,15 @@ Use [daemon/](daemon/README.md): `start.sh` starts the service and enables autom
 startup, `stop.sh` stops it and disables automatic startup, and `monitor.sh` shows
 its state. sudo asks for your password.
 
+BLC and FTOF run in tmux so operators can inspect them directly. The checkout
+directory selects the session: `BLC_hv_monitoring` uses `blc`, and
+`CVC_hv_monitoring` uses `ftof`. Equipment addresses and channels still come from
+`param/conf.yml`; preserve each machine's configuration when updating.
+
+Use `tmux attach -t blc` or `tmux attach -t ftof`, then **Ctrl+b**, **d** to
+detach without stopping monitoring. See the daemon README before updating an
+existing systemd definition; changing repository files does not install units.
+
 ```bash
 ./daemon/monitor.sh
 ./daemon/stop.sh
