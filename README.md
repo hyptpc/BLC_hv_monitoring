@@ -48,6 +48,36 @@ monitoring_targets:
     # ... (list all channels to monitor)
 ```
 
+## Private login file
+
+The command line is unchanged. The logger automatically reads
+`credentials.local.yml` from the same directory as the configuration file.
+No environment variables or extra arguments are needed.
+
+On a new installation, copy the example, restrict its permissions, then edit
+`username` and `password` (quote both YAML values):
+
+```bash
+cp -n param/credentials.example.yml param/credentials.local.yml
+chmod 600 param/credentials.local.yml
+```
+
+For `python3 monitor_caen.py param/conf.yml`, the login file is
+`param/credentials.local.yml`. On monitor2 the existing login has already been
+migrated; keep using the existing command or service controls.
+
+The login file is excluded from Git and must be owned by the service user with
+no group/other permissions. Missing or invalid login files stop the logger
+before any database or device connection. Example credentials are blank.
+This removes credentials from the current source; it does not erase earlier
+Git history or change the device password.
+
+Offline verification (uses fake CAEN and database objects):
+
+```bash
+python3 tests/test_monitor_credentials.py
+```
+
 ## Usage
 
 Run the script from your terminal. It will connect to the HV crate and the database, then begin logging at the specified interval.

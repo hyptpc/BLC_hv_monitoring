@@ -5,7 +5,8 @@ import time
 import datetime
 import sqlite3
 import yaml       
-import argparse   
+import argparse
+from monitor_credentials import CredentialsError, load_credentials
 
 # --- CAEN Parameter Names ---
 PARAM_V_SET = 'V0Set' # Target/Set Voltage
@@ -202,6 +203,12 @@ def main():
         print(f"[Fatal Error] 'monitoring_targets' in {args.config_file} is empty. Nothing to do.", file=sys.stderr)
         sys.exit(1)
     
+    try:
+        username, password = load_credentials(args.config_file)
+    except CredentialsError as e:
+        print(f"[Fatal Error] {e}", file=sys.stderr)
+        sys.exit(1)
+
     db_conn = None
     consecutive_failures = 0 # Initialize consecutive failure counter
 
@@ -220,7 +227,7 @@ def main():
                 # 1. Connect to CAEN HV (INSIDE the loop)
                 print(f"Connecting to CAEN HV at {host}...")
                 hv_device = hv.Device.open(hv.SystemType[systype], hv.LinkType[linktype],
-                                          host, 'admin', 'admin')
+                                          host, username, password)
                 
                 # --- Connection Succeeded ---
                 consecutive_failures = 0 # Reset failure counter
